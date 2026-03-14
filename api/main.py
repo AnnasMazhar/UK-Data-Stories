@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -46,6 +47,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Versioned router
+from fastapi import APIRouter  # noqa: E402
+v1 = APIRouter(prefix="/api/v1", tags=["v1"])
+
 app.state.limiter = limiter
 
 app.add_middleware(
@@ -59,20 +64,13 @@ app.add_middleware(
 
 # Error handler must be added AFTER app is created
 async def rate_limit_handler(request, exc):
-    return HTTPException(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail={"error": {"message": "Rate limit exceeded", "code": "RATE_LIMITED"}}
+    return JSONResponse(
+        status_code=429,
+        content={"error": {"message": "Rate limit exceeded", "code": "RATE_LIMITED"}}
     )
 
 
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-
-
-async def rate_limit_handler(request, exc):
-    return HTTPException(
-        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        detail={"error": {"message": "Rate limit exceeded", "code": "RATE_LIMITED"}}
-    )
 
 
 def verify_api_key(x_api_key: Annotated[str | None, Header()] = None):
@@ -229,6 +227,13 @@ async def list_datasets(
             detail={"error": {"message": "Limit cannot exceed 100", "code": "INVALID_LIMIT"}}
         )
     
+    ALLOWED_SORT = {"id", "title", "topic", "source", "ingested_at", "quality_score"}
+    if sort not in ALLOWED_SORT:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": {"message": f"Invalid sort field. Allowed: {', '.join(sorted(ALLOWED_SORT))}", "code": "INVALID_SORT"}}
+        )
+    
     db = get_db()
     offset = (page - 1) * limit
     where_clause = "WHERE 1=1"
@@ -339,6 +344,212 @@ async def get_sources(_: bool = Depends(verify_api_key)):
     ]
 
 
+@app.get("/insights", tags=["insights"])
+@limiter.limit("100/minute")
+async def list_insights(
+    request: Request,
+    topic: str | None = Query(None),
+    severity: str | None = Query(None, pattern="^(high|medium|low)$"),
+    insight_type: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    _: bool = Depends(verify_api_key),
+):
+    """List structured insights with pagination, ranked by composite score."""
+    db = get_db()
+    where, params = ["1=1"], []
+    if topic:
+        where.append("topic = ?")
+        params.append(topic)
+    if severity:
+        where.append("severity = ?")
+        params.append(severity)
+    if insight_type:
+        where.append("insight_type = ?")
+        params.append(insight_type)
+
+    w = " AND ".join(where)
+    total = db.execute(f"SELECT COUNT(*) FROM insights WHERE {w}", params).fetchone()[0]
+    offset = (page - 1) * limit
+
+    rows = db.execute(f"""
+        SELECT id, topic, insight_type, severity, confidence, title, summary, evidence, run_id, rank_score, created_at
+        FROM insights WHERE {w}
+        ORDER BY rank_score DESC
+        LIMIT ? OFFSET ?
+    """, params + [limit, offset]).fetchall()
+    cols = [d[0] for d in db.description]
+    return {"data": [dict(zip(cols, r)) for r in rows], "meta": {"page": page, "limit": limit, "total": total, "pages": (total + limit - 1) // limit}}
+
+
+@app.get("/insights/top", tags=["insights"])
+@limiter.limit("100/minute")
+async def top_insights(
+    request: Request,
+    limit: int = Query(10, ge=1, le=50),
+    _: bool = Depends(verify_api_key),
+):
+    """Get top-ranked insights across all topics."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT id, topic, insight_type, severity, confidence, title, summary, evidence, rank_score
+        FROM insights ORDER BY rank_score DESC LIMIT ?
+    """, [limit]).fetchall()
+    cols = [d[0] for d in db.description]
+    return {"data": [dict(zip(cols, r)) for r in rows]}
+
+
+@app.get("/insights/ranked-feed", tags=["insights"])
+@limiter.limit("100/minute")
+async def ranked_feed(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100),
+    _: bool = Depends(verify_api_key),
+):
+    """Get the ranked insight feed from all advanced analysis modules."""
+    import json as _json
+    db = get_db()
+    row = db.execute("""
+        SELECT value FROM analysis_results WHERE metric = 'ranked_feed'
+        ORDER BY created_at DESC LIMIT 1
+    """).fetchone()
+    if not row:
+        return {"data": [], "meta": {"total": 0}}
+    feed = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
+    return {"data": feed[:limit], "meta": {"total": len(feed)}}
+
+
+@app.get("/insights/change-points", tags=["insights"])
+@limiter.limit("100/minute")
+async def change_points(
+    request: Request,
+    topic: str | None = Query(None),
+    _: bool = Depends(verify_api_key),
+):
+    """Get change-point detection results."""
+    import json as _json
+    db = get_db()
+    if topic:
+        rows = db.execute(
+            "SELECT topic, value FROM analysis_results WHERE metric = 'change_points' AND topic = ? ORDER BY created_at DESC",
+            [topic],
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT topic, value FROM analysis_results WHERE metric = 'change_points' ORDER BY created_at DESC"
+        ).fetchall()
+    data = [{"topic": r[0], **(_json.loads(r[1]) if isinstance(r[1], str) else r[1])} for r in rows]
+    return {"data": data}
+
+
+@app.get("/insights/associations", tags=["insights"])
+@limiter.limit("100/minute")
+async def associations(
+    request: Request,
+    limit: int = Query(20, ge=1, le=100),
+    _: bool = Depends(verify_api_key),
+):
+    """Get association rule mining results."""
+    import json as _json
+    db = get_db()
+    row = db.execute(
+        "SELECT value FROM analysis_results WHERE metric = 'association_rules' ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return {"data": []}
+    rules = _json.loads(row[0]) if isinstance(row[0], str) else row[0]
+    return {"data": rules[:limit]}
+
+
+@app.get("/insights/graph", tags=["insights"])
+@limiter.limit("100/minute")
+async def graph_insights(
+    request: Request,
+    _: bool = Depends(verify_api_key),
+):
+    """Get graph-based community detection results."""
+    import json as _json
+    db = get_db()
+    row = db.execute(
+        "SELECT value FROM analysis_results WHERE metric = 'graph_analysis' ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return {"data": {}}
+    return {"data": _json.loads(row[0]) if isinstance(row[0], str) else row[0]}
+
+
+@app.get("/stories", tags=["stories"])
+@limiter.limit("100/minute")
+async def list_stories(
+    request: Request,
+    topic: str | None = Query(None),
+    limit: int = Query(10, ge=1, le=50),
+    _: bool = Depends(verify_api_key),
+):
+    """List narrative data stories."""
+    db = get_db()
+    if topic:
+        rows = db.execute("""
+            SELECT topic, headline, key_finding, context, outlook, annotations, model_used, created_at
+            FROM data_stories WHERE topic = ? ORDER BY created_at DESC LIMIT ?
+        """, [topic, limit]).fetchall()
+    else:
+        rows = db.execute("""
+            SELECT topic, headline, key_finding, context, outlook, annotations, model_used, created_at
+            FROM data_stories ORDER BY created_at DESC LIMIT ?
+        """, [limit]).fetchall()
+    cols = [d[0] for d in db.description]
+    return {"data": [dict(zip(cols, r)) for r in rows]}
+
+
+@app.get("/topics", tags=["topics"])
+async def list_topics(_: bool = Depends(verify_api_key)):
+    """List topics with dataset counts and latest insight."""
+    db = get_db()
+    topics = db.execute("""
+        SELECT topic, COUNT(*) as count FROM records GROUP BY topic ORDER BY count DESC
+    """).fetchall()
+
+    result = []
+    for topic, count in topics:
+        insight = db.execute("""
+            SELECT title, severity FROM insights
+            WHERE topic = ? ORDER BY CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, confidence DESC LIMIT 1
+        """, [topic]).fetchone()
+        result.append({
+            "topic": topic, "count": count,
+            "top_insight": {"title": insight[0], "severity": insight[1]} if insight else None,
+        })
+    return {"data": result}
+
+
 if __name__ == "__main__":
     import uvicorn
+
+    # Register versioned routes (mirror existing endpoints)
+    v1.add_api_route("/insights", list_insights, methods=["GET"])
+    v1.add_api_route("/insights/top", top_insights, methods=["GET"])
+    v1.add_api_route("/insights/ranked-feed", ranked_feed, methods=["GET"])
+    v1.add_api_route("/insights/change-points", change_points, methods=["GET"])
+    v1.add_api_route("/insights/associations", associations, methods=["GET"])
+    v1.add_api_route("/insights/graph", graph_insights, methods=["GET"])
+    v1.add_api_route("/stories", list_stories, methods=["GET"])
+    v1.add_api_route("/topics", list_topics, methods=["GET"])
+    v1.add_api_route("/datasets", list_datasets, methods=["GET"])
+    v1.add_api_route("/datasets/search", search_datasets, methods=["GET"])
+    app.include_router(v1)
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
+else:
+    # Also register when imported (e.g. by uvicorn)
+    v1.add_api_route("/insights", list_insights, methods=["GET"])
+    v1.add_api_route("/insights/top", top_insights, methods=["GET"])
+    v1.add_api_route("/insights/ranked-feed", ranked_feed, methods=["GET"])
+    v1.add_api_route("/insights/change-points", change_points, methods=["GET"])
+    v1.add_api_route("/insights/associations", associations, methods=["GET"])
+    v1.add_api_route("/insights/graph", graph_insights, methods=["GET"])
+    v1.add_api_route("/stories", list_stories, methods=["GET"])
+    v1.add_api_route("/topics", list_topics, methods=["GET"])
+    v1.add_api_route("/datasets", list_datasets, methods=["GET"])
+    v1.add_api_route("/datasets/search", search_datasets, methods=["GET"])
+    app.include_router(v1)

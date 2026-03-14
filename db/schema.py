@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS records (
     source VARCHAR NOT NULL,
     ingested_at TIMESTAMP NOT NULL,
     quality_score DOUBLE DEFAULT 0.0,
+    metadata_created TIMESTAMP,
+    metadata_modified TIMESTAMP,
+    theme VARCHAR,
+    num_resources INTEGER DEFAULT 0,
     -- Full-text search content (computed)
     fts_content VARCHAR
 );

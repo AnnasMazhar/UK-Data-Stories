@@ -120,7 +120,7 @@ class DataRefreshScheduler:
 
         try:
             scraper = DataGovUkScraper(output_dir=RAW_DIR)
-            packages = scraper.run(max_packages=100)
+            packages = scraper.run(max_per_topic=100)
             
             if not packages:
                 logger.warning("data.gov.uk scraper returned no data")

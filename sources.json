@@ -17,6 +17,15 @@
       "fields": ["name", "title", "description", "resources", "organization", "tags"],
       "tos_ok": true,
       "notes": "data.gov.uk CKAN API - UK government open data. No rate limits. Search datasets, publishers, tags."
+    },
+    {
+      "name": "ckan_gov_uk",
+      "url": "https://ckan.publishing.service.gov.uk/api/action",
+      "format": "json",
+      "update_frequency": "daily",
+      "fields": ["id", "title", "notes", "organization", "tags", "theme-primary", "resources", "metadata_modified"],
+      "tos_ok": true,
+      "notes": "CKAN Publishing Service - 57k+ UK government datasets. Has theme-primary taxonomy, temporal metadata, resource formats. No rate limits."
     }
   ]
 }

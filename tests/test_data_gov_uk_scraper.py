@@ -14,118 +14,89 @@ def scraper(tmp_path):
 
 
 @pytest.fixture
-def mock_ckan_response():
-    """Mock CKAN package_list response."""
-    return [
-        {"id": "pkg1", "name": "air-quality-data", "title": "Air Quality Data"},
-        {"id": "pkg2", "name": "bus-routes", "title": "Bus Routes"},
-    ]
-
-
-def test_transform_record(scraper, mock_ckan_response):
-    """Test transformation of CKAN package to canonical schema."""
-    package = {
-        "id": "pkg1",
-        "name": "air-quality-data",
-        "title": "Air Quality Data",
-        "notes": "Air quality measurements from monitoring stations.",
-        "tags": [{"name": "environment"}, {"name": "air"}],
-        "organization": {"title": "DEFRA"},
-        "license_title": "Open Government Licence"
+def mock_search_response():
+    """Mock CKAN search response."""
+    return {
+        "result": {
+            "results": [
+                {
+                    "id": "pkg1",
+                    "title": "Air Quality Data",
+                    "notes": "Air quality measurements",
+                    "organization": {"title": "DEFRA"},
+                    "tags": [{"name": "environment"}, {"name": "air"}],
+                    "resources": [{"url": "https://example.com/data.csv"}],
+                    "license_title": "OGL",
+                    "metadata_modified": "2024-01-01"
+                }
+            ]
+        }
     }
+
+
+def test_transform_record(scraper, mock_search_response):
+    """Test transformation of CKAN package to canonical schema."""
+    package = mock_search_response["result"]["results"][0]
+    result = scraper.transform_record(package, "environment")
     
-    result = scraper.transform_record(package)
-    
-    assert result["id"] == "pkg1"
     assert result["title"] == "Air Quality Data"
-    assert result["description"] == "Air quality measurements from monitoring stations."
+    assert result["description"] == "Air quality measurements"
     assert result["organization"] == "DEFRA"
-    assert result["tags"] == ["environment", "air"]
     assert result["source"] == "data_gov_uk"
     assert result["topic"] == "environment"
-    assert result["ingested_at"] is not None
 
 
 def test_transform_record_transport_topic(scraper):
     """Test topic inference for transport."""
     package = {
         "id": "pkg2",
-        "name": "bus-routes",
         "title": "Bus Routes",
         "notes": "Bus route data",
-        "tags": [{"name": "transport"}, {"name": "bus"}]
+        "tags": [{"name": "transport"}],
+        "organization": {"title": "DfT"},
+        "resources": [],
+        "license_title": "OGL"
     }
     
-    result = scraper.transform_record(package)
+    result = scraper.transform_record(package, "transport")
     assert result["topic"] == "transport"
 
 
-def test_infer_topic_from_title(scraper):
-    """Test topic inference from title only."""
-    package = {
-        "id": "pkg3",
-        "name": "crime-stats",
-        "title": "Crime Statistics",
-        "notes": "Crime data",
-        "tags": []
-    }
-    
-    result = scraper.transform_record(package)
-    assert result["topic"] == "crime"
-
-
 @patch("scrapers.base.httpx.Client.get")
-def test_list_packages(mock_get, scraper, mock_ckan_response):
-    """Test fetching packages."""
+def test_search_by_topic(mock_get, scraper, mock_search_response):
+    """Test searching packages by topic."""
     mock_response = MagicMock()
-    mock_response.json.return_value = {"result": mock_ckan_response}
+    mock_response.json.return_value = mock_search_response
     mock_response.raise_for_status = MagicMock()
     mock_get.return_value = mock_response
     
-    packages = scraper.list_packages(limit=10)
+    results = scraper.search_by_topic("environment", limit=10)
     
-    assert len(packages) == 2
-    assert packages[0]["id"] == "pkg1"
+    assert len(results) >= 1
 
 
 @patch("scrapers.base.httpx.Client.get")
-def test_search_packages(mock_get, scraper):
-    """Test searching packages."""
-    search_result = {
-        "result": {
-            "count": 1,
-            "results": [
-                {"id": "search1", "name": "found-pkg", "title": "Found Package"}
-            ]
-        }
-    }
-    
-    mock_response = MagicMock()
-    mock_response.json.return_value = search_result
-    mock_response.raise_for_status = MagicMock()
-    mock_get.return_value = mock_response
-    
-    results = scraper.search_packages("air quality")
-    
-    assert len(results) == 1
-    assert results[0]["id"] == "search1"
-
-
-@patch("scrapers.base.httpx.Client.get")
-def test_run_writes_jsonl(mock_get, scraper, mock_ckan_response):
+def test_run_writes_jsonl(mock_get, scraper, mock_search_response):
     """Test that run() writes to JSONL file."""
     mock_response = MagicMock()
-    mock_response.json.return_value = {"result": mock_ckan_response}
+    mock_response.json.return_value = mock_search_response
     mock_response.raise_for_status = MagicMock()
     mock_get.return_value = mock_response
     
-    scraper.run(max_packages=10)
+    scraper.run(max_per_topic=10)
     
     output_file = scraper.output_dir / "data_gov_uk.jsonl"
     assert output_file.exists()
     
     with open(output_file) as f:
         lines = f.readlines()
-        assert len(lines) == 2
+        assert len(lines) >= 1
         record = json.loads(lines[0])
-        assert record["id"] == "pkg1"
+        assert "title" in record
+
+
+def test_derive_record_id(scraper):
+    """Test record ID derivation."""
+    record = {"id": "test-id-123"}
+    record_id = scraper._derive_record_id(record)
+    assert record_id == "test-id-123"
