@@ -1,4 +1,4 @@
-"""Run the full GovDataStory pipeline."""
+"""Run the full UK Data Stories pipeline."""
 
 import logging
 import uuid

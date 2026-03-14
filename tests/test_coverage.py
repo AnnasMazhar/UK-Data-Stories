@@ -453,11 +453,13 @@ class TestNarrator:
         assert call_llm("test prompt", provider) is None
 
     def test_generate_story_with_fallback_uses_template(self):
+        from unittest.mock import patch
         from stories.narrator import generate_story_with_fallback
-        story = generate_story_with_fallback("health", {
-            "trend": {"direction": "up", "slope": 0.5, "r_squared": 0.8},
-            "summary": {"total_datasets": 100, "num_organizations": 5, "avg_quality": 0.85},
-        })
+        with patch.dict("os.environ", {"NVIDIA_API_KEY": "", "GLM_API_KEY": "", "OPENROUTER_API_KEY": ""}, clear=False):
+            story = generate_story_with_fallback("health", {
+                "trend": {"direction": "up", "slope": 0.5, "r_squared": 0.8},
+                "summary": {"total_datasets": 100, "num_organizations": 5, "avg_quality": 0.85},
+            })
         assert story["model_used"] == "template"
         assert story["headline"]
 

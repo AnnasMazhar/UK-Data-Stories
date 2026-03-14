@@ -1,4 +1,4 @@
-"""LLM Data Story Narrator for GovDataStory."""
+"""LLM Data Story Narrator for GovDataStory — IMPROVED VERSION."""
 
 import json
 import logging
@@ -106,7 +106,7 @@ def call_llm(prompt: str, provider: dict) -> str | None:
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.7,
-        "max_tokens": 500,
+        "max_tokens": 600,
     }
     
     try:
@@ -114,7 +114,7 @@ def call_llm(prompt: str, provider: dict) -> str | None:
             f"{provider['base_url']}/chat/completions",
             headers=headers,
             json=payload,
-            timeout=30.0,
+            timeout=45.0,
         )
         response.raise_for_status()
         
@@ -125,137 +125,70 @@ def call_llm(prompt: str, provider: dict) -> str | None:
         return None
 
 
-def _template_story(topic: str, analysis: dict) -> dict:
-    """Generate a data-driven narrative from analysis results using diverse templates."""
-    import random
-
-    trend = analysis.get("trend", {})
-    summary = analysis.get("summary", {})
-    anomalies = analysis.get("anomalies", {})
-    seasonality = analysis.get("seasonality", {})
-
-    total = summary.get("total_datasets", 0)
-    orgs = summary.get("num_organizations", 0)
-    direction = trend.get("direction", "stable")
-    slope = trend.get("slope", 0)
-    r2 = trend.get("r_squared", 0)
-    pct = abs(round(slope * 12 / max(total, 1) * 100, 1))  # annualized % change
-
-    T = topic.title()
-
-    # Headline pools
-    if direction == "up" and r2 > 0.1:
-        headline = random.choice([
-            f"{T} Data Publishing Accelerates",
-            f"Surge in {T} Open Data Output",
-            f"{T}: Government Data Production Expanding",
-        ])
-    elif direction == "down" and r2 > 0.1:
-        headline = random.choice([
-            f"{T} Data Output Slowing",
-            f"Decline in {T} Dataset Publishing",
-            f"{T} Open Data Activity Contracts",
-        ])
-    else:
-        headline = random.choice([
-            f"{T} Data Landscape: {total} Datasets",
-            f"{T}: Steady State Across {orgs} Publishers",
-            f"Mapping the {T} Data Ecosystem",
-        ])
-
-    # Key finding pools
-    if direction != "unknown" and r2 > 0.05:
-        word = "growing" if direction == "up" else "declining"
-        key_finding = random.choice([
-            f"{T} publishing is {word} at {abs(slope):.1f} datasets/month. "
-            f"{orgs} organisations contribute {total} datasets to this topic.",
-            f"Dataset production in {T} has been {word} ({pct}% annualised). "
-            f"A total of {total} datasets are published by {orgs} organisations.",
-            f"Government {topic} data output is {word}, with {orgs} publishers "
-            f"maintaining {total} datasets at a rate of {abs(slope):.1f}/month.",
-        ])
-    else:
-        key_finding = random.choice([
-            f"{total} datasets from {orgs} organisations cover {topic}. "
-            f"Publishing activity has been relatively stable.",
-            f"The {topic} data landscape comprises {total} datasets across {orgs} publishers, "
-            f"with no significant trend in publishing volume.",
-        ])
-
-    # Context
-    parts = []
-    if summary.get("earliest_modified") and summary.get("latest_modified"):
-        parts.append(random.choice([
-            f"Data spans {summary['earliest_modified']} to {summary['latest_modified']}.",
-            f"Records cover the period {summary['earliest_modified']} through {summary['latest_modified']}.",
-        ]))
-    avg_q = summary.get("avg_quality", 0)
-    if avg_q:
-        parts.append(f"Average data quality score is {avg_q:.2f}.")
-    anom_months = anomalies.get("months", [])
-    if anom_months:
-        parts.append(random.choice([
-            f"Unusual activity detected in {', '.join(anom_months[:3])}.",
-            f"Publishing anomalies were flagged for {', '.join(anom_months[:3])}.",
-        ]))
-    period = seasonality.get("dominant_period", 0)
-    strength = seasonality.get("strength", 0)
-    if strength > 0.15 and period > 0:
-        parts.append(f"A {period:.0f}-month publishing cycle is evident.")
-    context = " ".join(parts) if parts else f"The {topic} topic aggregates UK government open data."
-
-    # Outlook pools
-    if direction == "up":
-        outlook = random.choice([
-            "Continued growth expected as more organisations publish open data.",
-            "The upward trend suggests expanding government transparency in this area.",
-        ])
-    elif direction == "down":
-        outlook = random.choice([
-            "The decline may reflect dataset consolidation or reduced publishing activity.",
-            "Fewer new publications could indicate data maturity or shifting priorities.",
-        ])
-    else:
-        outlook = random.choice([
-            "Stable publishing suggests a mature data landscape for this topic.",
-            "Consistent output indicates an established publishing cadence.",
-        ])
-
-    annotations = []
-    if direction != "unknown":
-        annotations.append(f"Trend: {direction} ({slope:+.1f}/mo)")
-    if anom_months:
-        annotations.append(f"Anomalies: {len(anom_months)}")
-    annotations.append(f"Quality: {avg_q:.2f}")
-
-    return {
-        "headline": headline,
-        "key_finding": key_finding,
-        "context": context,
-        "outlook": outlook,
-        "annotations": annotations,
-        "model_used": "template",
-    }
-
-
 def generate_story_with_fallback(topic: str, analysis_results: dict) -> dict:
     """Generate a story using the provider fallback chain."""
     
-    prompt = f"""You are a data storyteller. Given the following analysis for the topic "{topic}", generate a short data story.
+    # Build rich context for the LLM
+    summary = analysis_results.get("summary", {})
+    trend = analysis_results.get("trend", {})
+    anomalies = analysis_results.get("anomalies", {})
+    seasonality = analysis_results.get("seasonality", {})
+    stl_trend = analysis_results.get("stl_trend", {})
+    change_points = analysis_results.get("change_points", {})
+    
+    # Context for the story
+    context_parts = [
+        f"TOPIC: {topic.upper()}",
+        f"Total datasets: {summary.get('total_datasets', 'N/A')}",
+        f"Organizations publishing: {summary.get('num_organizations', 'N/A')}",
+        f"Quality score: {summary.get('avg_quality', 'N/A')}",
+        f"Date range: {summary.get('earliest_modified', 'N/A')} to {summary.get('latest_modified', 'N/A')}",
+        f"Trend direction: {trend.get('direction', 'N/A')}",
+        f"Monthly change: {trend.get('slope', 0):+.2f} datasets/month",
+        f"R-squared: {trend.get('r_squared', 0):.3f}",
+        f"STL trend: {stl_trend.get('trend', 'N/A')} (magnitude: {stl_trend.get('magnitude', 0):.2f})",
+        f"Anomaly months: {anomalies.get('months', [])[:5]}",
+        f"Change points: {change_points.get('change_months', [])}",
+    ]
+    
+    prompt = f"""You are an expert data journalist writing for UK government policymakers, journalists, and researchers.
 
-Analysis results:
-{json.dumps(analysis_results, indent=2)}
+Given the analysis for the "{topic}" topic, write a compelling data story using the OIA framework:
 
-Generate a JSON response with exactly these fields:
+=== OBSERVATION (1 sentence) ===
+What specific numbers does the data show? Be precise.
+Example: "The UK published 1,939 economy datasets across 524 organisations, but output has fallen from 15/month in 2014 to under 5/month in 2026."
+
+=== INSIGHT (2 sentences) ===
+Why does this matter? Connect to real UK events/context.
+- Reference: Brexit (2016), COVID-19 (2020-21), austerity (2010-2019), 2019 general election, 2015 welfare reform
+- Who is affected? (researchers, local councils, journalists, policymakers)
+
+=== ACTION (1 sentence) ===
+What specific action should someone take?
+NOT "more research needed" — give concrete, actionable recommendations.
+
+=== GUIDELINES ===
+- Headline: 8-12 words, catchy, SPECIFIC to THIS data
+- NO generic headlines like "X Shows Decline" or "Structural Shift Detected"
+- Include 2-3 chart annotations with specific numbers/dates
+- Write for decision-makers who use data
+- If trend is down, explain WHO loses and HOW
+- Connect anomalies to real events when possible
+
+Analysis data:
+{chr(10).join(context_parts)}
+
+Generate JSON only:
 {{
-    "headline": "10 words maximum, catchy title",
-    "key_finding": "2 sentences explaining the main insight",
-    "context": "3-4 sentences of background context",
-    "outlook": "1-2 sentences about what this means for the future",
-    "annotations": ["chart annotation 1", "chart annotation 2", "chart annotation 3"]
+    "headline": "specific catchy title",
+    "key_finding": "INSIGHT text",
+    "context": "OBSERVATION text", 
+    "outlook": "ACTION text",
+    "annotations": ["annotation 1", "annotation 2", "annotation 3"]
 }}
 
-Respond ONLY with valid JSON, no additional text."""
+Respond ONLY with valid JSON, no other text."""
 
     for provider in LLM_PROVIDERS:
         logger.info(f"Trying LLM provider: {provider['name']}")
@@ -271,14 +204,99 @@ Respond ONLY with valid JSON, no additional text."""
                 required = ["headline", "key_finding", "context", "outlook", "annotations"]
                 if all(field in story for field in required):
                     story["model_used"] = provider["name"]
+                    logger.info(f"Generated story with {provider['name']}: {story['headline']}")
                     return story
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON from {provider['name']}")
         
     
-    # Fallback: template-based story from real analysis data
-    logger.info("LLM unavailable, using template-based narrative")
-    return _template_story(topic, analysis_results)
+    # Fallback: template-based story
+    logger.warning("LLM unavailable, using enhanced template")
+    return _enhanced_template_story(topic, analysis_results)
+
+
+def _enhanced_template_story(topic: str, analysis: dict) -> dict:
+    """Enhanced template-based story when LLM fails."""
+    import random
+
+    trend = analysis.get("trend", {})
+    summary = analysis.get("summary", {})
+    anomalies = analysis.get("anomalies", {})
+    stl = analysis.get("stl_trend", {})
+
+    total = summary.get("total_datasets", 0)
+    orgs = summary.get("num_organizations", 0)
+    direction = trend.get("direction", "stable")
+    slope = trend.get("slope", 0)
+    r2 = trend.get("r_squared", 0)
+    months = anomalies.get("months", [])
+    
+    T = topic.title()
+
+    # Better headlines
+    if direction == "up" and r2 > 0.1:
+        headline = f"{T} Data Surge: {total} Datasets Across {orgs} Publishers"
+    elif direction == "down" and r2 > 0.1:
+        headline = f"{T} Crisis: Dataset Output Dropped {abs(slope)*12:.0f}/Year"
+    else:
+        headline = f"{T}: {total} Datasets From {orgs} UK Organisations"
+
+    # Key finding with context
+    if direction == "down":
+        key_finding = (
+            f"UK government {topic} data output has declined from peak rates to just {abs(slope):.1f} new datasets per month. "
+            f"With {total} datasets from {orgs} organisations, this trend threatens research capacity."
+        )
+    elif direction == "up":
+        key_finding = (
+            f"{topic.title()} data publishing has grown to {total} datasets across {orgs} organisations. "
+            f"This expansion supports better policy research and public accountability."
+        )
+    else:
+        key_finding = (
+            f"The UK publishes {total} {topic} datasets through {orgs} organisations, "
+            f"providing consistent coverage for researchers and policymakers."
+        )
+
+    # Context
+    context_parts = [f"Data spans {summary.get('earliest_modified', 'N/A')} to {summary.get('latest_modified', 'N/A')}."]
+    if months:
+        context_parts.append(f"Notable spikes in: {', '.join(months[:3])}.")
+    context = " ".join(context_parts)
+
+    # Outlook with action
+    if direction == "down":
+        outlook = (
+            "Researchers and journalists should request data now before archives shrink further. "
+            "Policymakers must prioritize open data funding to maintain transparency."
+        )
+    elif direction == "up":
+        outlook = (
+            "Continue expanding data sharing to enable evidence-based policy making. "
+            "Consider linking {topic} data with related topics for richer insights."
+        )
+    else:
+        outlook = (
+            "Maintain current publishing levels while improving data quality. "
+            "Cross-topic integration could unlock new insights."
+        )
+
+    annotations = [
+        f"{total} datasets",
+        f"{orgs} publishers",
+        f"Trend: {direction}",
+    ]
+    if months:
+        annotations.append(f"Spikes: {', '.join(months[:2])}")
+
+    return {
+        "headline": headline,
+        "key_finding": key_finding,
+        "context": context,
+        "outlook": outlook,
+        "annotations": annotations,
+        "model_used": "enhanced_template",
+    }
 
 
 def generate_stories(run_id: str = None):
@@ -306,7 +324,6 @@ def generate_stories(run_id: str = None):
     analysis_data = {}
     
     for topic in all_topics:
-        # Get latest analysis for this topic
         results = conn.execute("""
             SELECT metric, value FROM analysis_results 
             WHERE topic = ? AND run_id = ?
@@ -317,7 +334,8 @@ def generate_stories(run_id: str = None):
     
     conn.close()
     
-    # Generate story for each topic (skip cross_topic — handled separately)
+    # Generate story for each topic
+    generated = 0
     for topic in analysis_data:
         if topic == "cross_topic":
             continue
@@ -335,92 +353,30 @@ def generate_stories(run_id: str = None):
             annotations=story.get("annotations", []),
             model_used=story.get("model_used", "unknown"),
         )
+        generated += 1
+        logger.info(f"  Generated: {story.get('headline', 'N/A')[:50]}...")
 
-    # Generate stories for advanced insight types
-    _generate_advanced_stories(run_id, analysis_data)
-
-    # Generate cross-topic synthesis story
+    # Generate cross-topic story
     cross = analysis_data.get("cross_topic", {})
     corrs = cross.get("correlations", {}).get("correlations", [])
     if corrs:
         top = sorted(corrs, key=lambda c: abs(c.get("correlation", 0)), reverse=True)[:3]
-        pairs = [f"{c['topic1'].title()}-{c['topic2'].title()} (r={c['correlation']:.2f})" for c in top]
+        pairs = [f"{c['topic1'].title()}-{c['topic2'].title()}" for c in top]
+        
         store_story(
             topic="cross_topic", run_id=run_id,
-            headline="Cross-Topic Patterns in UK Government Data",
-            key_finding=f"Strongest linked topic pairs: {'; '.join(pairs)}.",
-            context=f"Analysis of {len(analysis_data) - 1} topics reveals {len(corrs)} significant cross-topic correlations in publishing activity.",
-            outlook="Cross-topic patterns suggest coordinated government data publishing cycles.",
-            annotations=[f"{c['topic1']}<->{c['topic2']}: {c['correlation']:.2f}" for c in top],
-            model_used="template",
+            headline=f"UK Data Link: {pairs[0]} Strongly Connected",
+            key_finding=f"Strong correlations between {' and '.join(pairs[:2])} suggest coordinated publishing. "
+                        f"This could enable cross-topic research.",
+            context=f"Analysis of {len(analysis_data)-1} topics found {len(corrs)} significant correlations. "
+                   f"These links reveal hidden relationships in government data.",
+            outlook="Policymakers should consider integrated data strategies across correlated topics.",
+            annotations=[f"{c['topic1']}<->{c['topic2']}: r={c['correlation']:.2f}" for c in top],
+            model_used="enhanced_template",
         )
     
-    logger.info(f"Stories generated, run_id: {run_id}")
+    logger.info(f"Stories generated: {generated + 1}, run_id: {run_id}")
     return run_id
-
-
-def _generate_advanced_stories(run_id: str, analysis_data: dict):
-    """Generate narrative stories for advanced insight types."""
-    import random
-
-    cross = analysis_data.get("cross_topic", {})
-
-    # Change point stories
-    for topic, data in analysis_data.items():
-        if topic == "cross_topic":
-            continue
-        cp = data.get("change_points")
-        if not cp:
-            continue
-        months = cp.get("change_months", [])
-        if not months:
-            continue
-        store_story(
-            topic=topic, run_id=run_id,
-            headline=f"Structural Shift Detected in {topic.title()} Publishing",
-            key_finding=random.choice([
-                f"{topic.title()} dataset publication underwent a regime change in {', '.join(months)}.",
-                f"A structural shift in {topic} publishing activity was detected around {months[0]}.",
-            ]),
-            context=f"Change-point analysis (PELT algorithm) identified {len(months)} breakpoint(s) in the publication timeline.",
-            outlook="This may reflect policy changes, new data mandates, or organisational restructuring.",
-            annotations=[f"Shift: {m}" for m in months],
-            model_used="template",
-        )
-
-    # Graph community stories
-    graph = cross.get("graph_analysis", {})
-    communities = graph.get("communities", {})
-    for comm_id, members in communities.items():
-        topic_members = [m for m in members if m in analysis_data and m != "cross_topic"]
-        if len(topic_members) < 2:
-            continue
-        names = ", ".join(t.title() for t in topic_members)
-        store_story(
-            topic="cross_topic", run_id=run_id,
-            headline=f"Policy Cluster: {names}",
-            key_finding=f"{names} form a tightly connected cluster in the dataset knowledge graph.",
-            context=f"Louvain community detection grouped {len(members)} nodes (topics and organisations) into this cluster (modularity={graph.get('modularity', 0):.2f}).",
-            outlook="Clustered topics may benefit from integrated data strategies.",
-            annotations=[f"Cluster {comm_id}: {len(members)} nodes"],
-            model_used="template",
-        )
-        break  # one graph story is enough
-
-    # Association rule stories
-    rules = cross.get("association_rules")
-    if rules and isinstance(rules, list) and len(rules) > 0:
-        top = rules[:3]
-        lines = [f"{r['antecedent']} → {r['consequent']} (lift={r['lift']:.1f})" for r in top]
-        store_story(
-            topic="cross_topic", run_id=run_id,
-            headline="Hidden Associations in Government Data",
-            key_finding=f"Top association rules: {'; '.join(lines)}.",
-            context=f"Apriori mining discovered {len(rules)} significant rules linking topics, publishers, and keywords.",
-            outlook="These co-occurrence patterns can guide data integration and cross-departmental collaboration.",
-            annotations=[f"{r['antecedent']}→{r['consequent']}" for r in top],
-            model_used="template",
-        )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Transport Page."""
 
 import streamlit as st
-from dashboard.components import (
+from components import (
     get_datasets, get_latest_story, get_analysis, get_insights,
     build_trend_chart, render_story_card, render_insight_cards, render_footer,
 )
@@ -29,7 +29,7 @@ if ts.get("months"):
     st.plotly_chart(fig, use_container_width=True)
     trend = analysis.get("trend", {})
     if trend.get("direction") != "unknown":
-        st.caption(f"Trend: {trend["direction"]} (slope={trend.get("slope", 0):.2f}/mo, R²={trend.get("r_squared", 0):.2f})")
+        st.caption(f"Trend: {trend['direction']} (slope={trend.get('slope', 0):.2f}/mo, R²={trend.get('r_squared', 0):.2f})")
 else:
     st.info("No time-series data available yet.")
 

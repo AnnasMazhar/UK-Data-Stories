@@ -1,4 +1,4 @@
-"""Dashboard components for GovDataStory."""
+"""Dashboard components for UK Data Stories."""
 
 import streamlit as st
 import plotly.express as px
@@ -8,7 +8,7 @@ import duckdb
 DB_PATH = "data/govdatastory.duckdb"
 
 
-@st.cache_data(ttl=300)
+@st.cache_resource
 def get_db():
     """Get thread-safe DuckDB read-only connection."""
     return duckdb.connect(DB_PATH, read_only=True)
@@ -227,7 +227,7 @@ def build_donut_chart(data, title: str = "Distribution"):
     return fig
 
 
-def render_footer(source: str = "GovDataStory"):
+def render_footer(source: str = "UK Data Stories"):
     """Render a consistent footer."""
     import datetime
     st.markdown(f"""

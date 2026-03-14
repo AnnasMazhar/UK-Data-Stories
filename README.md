@@ -1,4 +1,4 @@
-# GovDataStory
+# UK Data Stories
 
 ![MIT License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)

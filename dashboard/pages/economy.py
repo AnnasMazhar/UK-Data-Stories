@@ -1,7 +1,7 @@
 """Economy Page."""
 
 import streamlit as st
-from dashboard.components import (
+from components import (
     get_datasets,
     get_latest_story,
     get_analysis,
