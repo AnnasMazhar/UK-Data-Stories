@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GovDataStory Schema",
+  "type": "object",
+  "required": ["id", "source", "topic", "ingested_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier from source"
+    },
+    "title": {
+      "type": ["string", "null"],
+      "description": "Dataset title"
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Dataset description"
+    },
+    "topic": {
+      "type": ["string", "null"],
+      "description": "Inferred topic (environment, transport, health, etc.)"
+    },
+    "keywords": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Keywords/tags"
+    },
+    "organization": {
+      "type": ["string", "null"],
+      "description": "Publishing organization"
+    },
+    "url": {
+      "type": ["string", "null"],
+      "description": "Source URL"
+    },
+    "license": {
+      "type": ["string", "null"],
+      "description": "License type"
+    },
+    "source": {
+      "type": "string",
+      "description": "Data source (ons_api, data_gov_uk)"
+    },
+    "ingested_at": {
+      "type": "string",
+      "description": "ISO timestamp of ingestion"
+    },
+    "quality_score": {
+      "type": "number",
+      "description": "Quality score (0-1)"
+    }
+  }
+}
