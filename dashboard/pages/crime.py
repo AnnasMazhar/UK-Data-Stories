@@ -9,13 +9,8 @@ st.set_page_config(page_title="Crime - UK Data Stories", page_icon="🔍")
 
 DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
 
-@st.cache_resource
-def get_db():
-    return duckdb.connect(DB_PATH, read_only=True)
-
-@st.cache_data(ttl=60)
 def get_topic_data(topic):
-    conn = get_db()
+    conn = duckdb.connect(DB_PATH, read_only=True)
     result = {}
     
     ts = conn.execute("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'timeseries' ORDER BY created_at DESC LIMIT 1", [topic]).fetchone()
@@ -39,31 +34,27 @@ def get_topic_data(topic):
     conn.close()
     return result
 
-@st.cache_data(ttl=60)
 def get_datasets(topic, limit=20):
-    conn = get_db()
-    ds = conn.execute("SELECT title, organization, source, quality_score FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT ?", [topic, limit]).fetchall()
+    conn = duckdb.connect(DB_PATH, read_only=True)
+    ds = conn.execute("SELECT title, organization FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT ?", [topic, limit]).fetchall()
     conn.close()
     return ds
 
 st.title("🔍 Crime Data")
 st.markdown("### UK Crime Dataset Intelligence")
 
-# Get data
 data = get_topic_data("crime")
 
-# Story
 if data.get('story'):
-    st.markdown("""
+    st.markdown(f"""
     <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 12px; padding: 20px; margin: 12px 0; color: white;">
-        <h3>🔍 {headline}</h3>
-        <p><strong>Finding:</strong> {key_finding}</p>
-        <p><strong>Context:</strong> {context}</p>
-        <p><strong>Outlook:</strong> {outlook}</p>
+        <h3>🔍 {data['story']['headline']}</h3>
+        <p><strong>Finding:</strong> {data['story']['key_finding']}</p>
+        <p><strong>Context:</strong> {data['story']['context']}</p>
+        <p><strong>Outlook:</strong> {data['story']['outlook']}</p>
     </div>
-    """.format(**data['story']), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# Metrics
 if data.get('summary'):
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -73,19 +64,14 @@ if data.get('summary'):
     with c3:
         st.metric("Quality", f"{data['summary'].get('avg_quality', 0):.2f}")
 
-# Chart
 if data.get('months') and data.get('counts'):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data['months'], y=data['counts'], mode='lines+markers',
-                            name='Datasets', line=dict(color='#667eea', width=2)))
-    fig.update_layout(title="Crime Dataset Publishing Over Time", xaxis_title="Month",
-                     yaxis_title="Count", template="plotly_white", height=350)
+    fig.add_trace(go.Scatter(x=data['months'], y=data['counts'], mode='lines+markers', name='Datasets', line=dict(color='#667eea', width=2)))
+    fig.update_layout(title="Crime Dataset Publishing Over Time", xaxis_title="Month", yaxis_title="Count", template="plotly_white", height=350)
     st.plotly_chart(fig, use_container_width=True)
 
-# Datasets
-st.markdown("### 📋 Sample Datasets")
-ds = get_datasets("crime")
-for d in ds[:10]:
-    st.markdown(f"- **{d[0][:60]}...** ({d[1]})")
+st.markdown("### Sample Datasets")
+for d in get_datasets("crime")[:10]:
+    st.markdown(f"- **{d[0][:50]}...** ({d[1]})")
 
-st.caption(f"🕐 UK Data Stories | Topic: Crime")
+st.caption("UK Data Stories | Crime")
