@@ -9,7 +9,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 
 from db.schema import init_db, get_write_connection
 from etl.transform import run_etl
-from scrapers.ckan_gov_uk import CKANGovUKScraper
+from scrapers.ckan_gov_uk import CkanGovUkScraper
 from scrapers.ons_api import ONSScraper
 
 logging.basicConfig(
@@ -73,7 +73,7 @@ class DataRefreshScheduler:
 
     def refresh_ckan(self) -> dict:
         def scrape():
-            s = CKANGovUKScraper(output_dir=RAW_DIR)
+            s = CkanGovUkScraper(output_dir=RAW_DIR)
             return s.run(max_per_theme=1000)
         return self._run_source("ckan_gov_uk", scrape)
 
