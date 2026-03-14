@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import duckdb
 import pytest
-from db.schema import SCHEMA_SQL, init_db, init_fts
+from db.schema import SCHEMA_SQL
 
 
 @pytest.fixture

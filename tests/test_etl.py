@@ -1,9 +1,6 @@
 """Tests for ETL transform module."""
 
-import json
-from pathlib import Path
 
-import pytest
 from etl.transform import (
     calculate_quality_score,
     deduplicate,

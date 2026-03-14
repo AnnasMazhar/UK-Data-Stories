@@ -5,16 +5,15 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from db.schema import SCHEMA_SQL, init_db, get_connection, close_connection
+from db.schema import init_db, get_connection, close_connection
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -215,7 +214,7 @@ async def list_datasets(
                 import json
                 try:
                     d["keywords"] = json.loads(d["keywords"])
-                except:
+                except json.JSONDecodeError:
                     d["keywords"] = []
         
         return {

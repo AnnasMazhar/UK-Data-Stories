@@ -2,7 +2,6 @@
 
 import threading
 from pathlib import Path
-from typing import Any
 
 import duckdb
 

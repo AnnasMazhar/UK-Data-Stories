@@ -1,6 +1,5 @@
 """Integration tests for data quality."""
 
-import os
 
 import pytest
 
@@ -61,7 +60,6 @@ def test_no_duplicate_ids():
 def test_recent_records_exist():
     """Test that records have recent ingested_at dates."""
     import duckdb
-    from datetime import datetime, timezone, timedelta
     con = duckdb.connect("data/govdatastory.duckdb")
     recent = con.execute("""
         SELECT COUNT(*) FROM records 
@@ -75,7 +73,7 @@ def test_ingest_run_logged():
     """Test that ingest runs are logged."""
     import duckdb
     con = duckdb.connect("data/govdatastory.duckdb")
-    runs = con.execute("SELECT COUNT(*) FROM ingest_runs").fetchone()[0]
+    con.execute("SELECT COUNT(*) FROM ingest_runs").fetchone()[0]
     con.close()
     # Note: This might be 0 if we didn't log the run
     # Just check the table exists

@@ -1,7 +1,6 @@
 """Tests for FastAPI endpoints - simplified."""
 
 import os
-import pytest
 
 # Set test env before importing
 os.environ["API_KEYS"] = "test-key-123,admin-key"
