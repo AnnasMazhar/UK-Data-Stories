@@ -17,7 +17,7 @@ class BaseScraper:
     def __init__(self, max_retries: int = 3, delays: tuple = (2, 4, 8)):
         self.max_retries = max_retries
         self.delays = delays
-        self.client = httpx.Client(timeout=30.0)
+        self.client = httpx.Client(timeout=30.0, follow_redirects=True)
 
     def _timestamp(self) -> str:
         """Return current ISO timestamp."""
