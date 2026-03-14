@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-DB_PATH = "data/govdatastory.duckdb"
+DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
 
 
 # ============== DATABASE FUNCTIONS ==============

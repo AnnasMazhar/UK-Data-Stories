@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import duckdb
 
-DB_PATH = "data/govdatastory.duckdb"
+DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
 
 
 @st.cache_resource

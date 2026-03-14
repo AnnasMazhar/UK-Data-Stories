@@ -7,7 +7,7 @@ import json
 
 st.set_page_config(page_title="Parliament - UK Data Stories", page_icon="🏛️")
 
-DB_PATH = "data/govdatastory.duckdb"
+DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
 
 @st.cache_resource
 def get_db():
