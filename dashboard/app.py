@@ -13,7 +13,13 @@ st.set_page_config(
     layout="wide"
 )
 
-DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
+import os
+
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "govdatastory.duckdb")
+
+# Bootstrap DB on first run (Streamlit Cloud)
+from bootstrap import bootstrap
+bootstrap()
 
 
 # ============== DB FUNCTIONS ==============

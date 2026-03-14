@@ -7,7 +7,8 @@ import json
 
 st.set_page_config(page_title="Economy - UK Data Stories", page_icon="📊")
 
-DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
+import os
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "govdatastory.duckdb")
 
 def get_topic_data(topic):
     conn = duckdb.connect(DB_PATH, read_only=True)
