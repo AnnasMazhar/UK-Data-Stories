@@ -7,10 +7,7 @@ from etl.transform import (
     load_to_duckdb,
     run_etl,
     transform_record,
-    transform_data_gov_uk_record,
     transform_ons_record,
-    transform_police_uk_record,
-    transform_parliament_record,
     transform_ckan_gov_uk_record,
 )
 
@@ -21,9 +18,6 @@ __all__ = [
     "load_to_duckdb",
     "run_etl",
     "transform_record",
-    "transform_data_gov_uk_record",
     "transform_ons_record",
-    "transform_police_uk_record",
-    "transform_parliament_record",
     "transform_ckan_gov_uk_record",
 ]
