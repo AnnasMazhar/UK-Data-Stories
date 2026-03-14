@@ -13,56 +13,43 @@ st.set_page_config(
     layout="wide"
 )
 
-import os
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "govdatastory.duckdb")
-
-# Bootstrap DB on first run (Streamlit Cloud)
-from bootstrap import bootstrap
-bootstrap()
+from db_helper import ensure_db, query, query_one, DB_PATH
+ensure_db()
 
 
 # ============== DB FUNCTIONS ==============
 def get_sources_and_topics():
-    conn = duckdb.connect(DB_PATH, read_only=True)
-    sources = conn.execute("SELECT source, COUNT(*) FROM records GROUP BY source").fetchall()
-    topics = conn.execute("SELECT topic, COUNT(*) FROM records GROUP BY topic ORDER BY COUNT(*) DESC").fetchall()
-    conn.close()
+    sources = query("SELECT source, COUNT(*) FROM records GROUP BY source")
+    topics = query("SELECT topic, COUNT(*) FROM records GROUP BY topic ORDER BY COUNT(*) DESC")
     return dict(sources), dict(topics)
 
 
 def get_all_stories(limit=10):
-    conn = duckdb.connect(DB_PATH, read_only=True)
-    stories = conn.execute("""
+    stories = query("""
         SELECT topic, headline, key_finding, context, outlook, annotations
-        FROM data_stories 
-        WHERE model_used = 'enhanced_template'
+        FROM data_stories
         ORDER BY created_at DESC
         LIMIT ?
-    """, [limit]).fetchall()
-    conn.close()
+    """, [limit])
     return [{"topic": s[0], "headline": s[1], "key_finding": s[2], "context": s[3], "outlook": s[4], "annotations": json.loads(s[5]) if isinstance(s[5], str) else s[5]} for s in stories]
 
 
 def get_topic_data(topic):
-    conn = duckdb.connect(DB_PATH, read_only=True)
     result = {}
-    
-    ts = conn.execute("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'timeseries' ORDER BY created_at DESC LIMIT 1", [topic]).fetchone()
+    ts = query_one("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'timeseries' ORDER BY created_at DESC LIMIT 1", [topic])
     if ts:
         data = json.loads(ts[0])
         result['months'] = data.get('months', [])
         result['counts'] = data.get('counts', [])
-    
-    trend = conn.execute("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'trend' ORDER BY created_at DESC LIMIT 1", [topic]).fetchone()
+    trend = query_one("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'trend' ORDER BY created_at DESC LIMIT 1", [topic])
     if trend:
         result['trend'] = json.loads(trend[0])
-    
-    summary = conn.execute("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'summary' ORDER BY created_at DESC LIMIT 1", [topic]).fetchone()
+    summary = query_one("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'summary' ORDER BY created_at DESC LIMIT 1", [topic])
     if summary:
         result['summary'] = json.loads(summary[0])
-    
-    conn.close()
     return result
 
 
@@ -156,12 +143,10 @@ with tab2:
 
 with tab3:
     topic_filter = st.selectbox("Filter by Topic", ["All"] + list(topics.keys()), key="filter_select")
-    conn = duckdb.connect(DB_PATH, read_only=True)
     if topic_filter == "All":
-        ds = conn.execute("SELECT title, topic, organization FROM records ORDER BY quality_score DESC LIMIT 50").fetchall()
+        ds = query("SELECT title, topic, organization FROM records ORDER BY quality_score DESC LIMIT 50")
     else:
-        ds = conn.execute("SELECT title, topic, organization FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT 50", [topic_filter]).fetchall()
-    conn.close()
+        ds = query("SELECT title, topic, organization FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT 50", [topic_filter])
     
     for d in ds[:20]:
         st.markdown(f"- **{d[0][:60]}...** ({d[1]}) - {d[2]}")
