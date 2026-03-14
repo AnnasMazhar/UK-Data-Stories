@@ -6,6 +6,7 @@ __pycache__/
 .env
 *.duckdb
 *.duckdb.wal
+!data/govdatastory.duckdb
 raw/
 htmlcov/
 .coverage

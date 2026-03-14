@@ -1,0 +1,63 @@
+name: Daily Pipeline
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6 AM UTC daily
+  workflow_dispatch:       # manual trigger
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: |
+          python -c "
+          import logging
+          logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
+
+          from db.schema import init_db
+          init_db('data/govdatastory.duckdb')
+
+          from pathlib import Path
+          from scrapers.ckan_gov_uk import CkanGovUkScraper
+          from scrapers.ons_api import ONSScraper
+
+          Path('raw').mkdir(exist_ok=True)
+          Path('data').mkdir(exist_ok=True)
+
+          CkanGovUkScraper(output_dir=Path('raw')).run(max_per_theme=1000)
+          ONSScraper(output_dir=Path('raw')).run(max_datasets=500)
+
+          from etl.transform import run_etl
+          run_etl()
+
+          from analysis.patterns import run_analysis
+          run_analysis()
+
+          import duckdb
+          conn = duckdb.connect('data/govdatastory.duckdb', read_only=True)
+          for t in ['records','analysis_results','insights','data_stories']:
+              c = conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]
+              print(f'{t}: {c}')
+          conn.close()
+          "
+
+      - name: Commit updated DB
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data/govdatastory.duckdb
+          git diff --cached --quiet && echo "No changes" || git commit -m "data: daily pipeline refresh $(date -u +%Y-%m-%d)"
+          git push
