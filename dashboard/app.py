@@ -1,4 +1,4 @@
-"""UK Data Stories Dashboard - Clean Unified Version."""
+"""UK Data Stories Dashboard - Main App."""
 
 import streamlit as st
 import plotly.express as px
@@ -10,32 +10,23 @@ from datetime import datetime
 st.set_page_config(
     page_title="UK Data Stories",
     page_icon="🇬🇧",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 DB_PATH = "/home/openclaw/workspace/projects/govdatastory/data/govdatastory.duckdb"
 
 
-# ============== DATABASE FUNCTIONS ==============
-@st.cache_resource
-def get_db():
-    return duckdb.connect(DB_PATH, read_only=True)
-
-
-@st.cache_data(ttl=60)
-def get_record_counts():
-    conn = get_db()
+# ============== DB FUNCTIONS ==============
+def get_sources_and_topics():
+    conn = duckdb.connect(DB_PATH, read_only=True)
     sources = conn.execute("SELECT source, COUNT(*) FROM records GROUP BY source").fetchall()
     topics = conn.execute("SELECT topic, COUNT(*) FROM records GROUP BY topic ORDER BY COUNT(*) DESC").fetchall()
     conn.close()
     return dict(sources), dict(topics)
 
 
-@st.cache_data(ttl=60)
 def get_all_stories(limit=10):
-    """Get enhanced stories with fallback."""
-    conn = get_db()
+    conn = duckdb.connect(DB_PATH, read_only=True)
     stories = conn.execute("""
         SELECT topic, headline, key_finding, context, outlook, annotations
         FROM data_stories 
@@ -47,29 +38,8 @@ def get_all_stories(limit=10):
     return [{"topic": s[0], "headline": s[1], "key_finding": s[2], "context": s[3], "outlook": s[4], "annotations": json.loads(s[5]) if isinstance(s[5], str) else s[5]} for s in stories]
 
 
-@st.cache_data(ttl=60)
-def get_topic_story(topic):
-    """Get story for a specific topic."""
-    conn = get_db()
-    story = conn.execute("""
-        SELECT headline, key_finding, context, outlook, annotations
-        FROM data_stories 
-        WHERE topic = ? AND model_used = 'enhanced_template'
-        ORDER BY created_at DESC LIMIT 1
-    """, [topic]).fetchone()
-    conn.close()
-    if story:
-        return {
-            "headline": story[0], "key_finding": story[1], "context": story[2],
-            "outlook": story[3], "annotations": json.loads(story[4]) if isinstance(story[4], str) else story[4]
-        }
-    return None
-
-
-@st.cache_data(ttl=60)
 def get_topic_data(topic):
-    """Get timeseries and analysis for a topic."""
-    conn = get_db()
+    conn = duckdb.connect(DB_PATH, read_only=True)
     result = {}
     
     ts = conn.execute("SELECT value FROM analysis_results WHERE topic = ? AND metric = 'timeseries' ORDER BY created_at DESC LIMIT 1", [topic]).fetchone()
@@ -90,175 +60,106 @@ def get_topic_data(topic):
     return result
 
 
-@st.cache_data(ttl=60)
-def get_datasets(topic=None, limit=50):
-    conn = get_db()
-    if topic:
-        ds = conn.execute("SELECT id, title, topic, organization, source, quality_score FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT ?", [topic, limit]).fetchall()
-    else:
-        ds = conn.execute("SELECT id, title, topic, organization, source, quality_score FROM records ORDER BY quality_score DESC LIMIT ?", [limit]).fetchall()
-    conn.close()
-    return ds
+# ============== UI ==============
+st.title("🇬🇧 UK Data Stories")
+st.markdown("### Interactive UK Government Data Intelligence")
 
+# Get data
+sources, topics = get_sources_and_topics()
+stories = get_all_stories(limit=10)
 
-# ============== UI COMPONENTS ==============
-def render_story_card(story, expanded=False):
-    """Render a story card with proper styling."""
-    if not story:
-        return
-    
-    emoji_map = {
-        "economy": "📊", "health": "🏥", "crime": "🔍", "education": "🎓",
-        "environment": "🌍", "population": "👥", "housing": "🏠", "transport": "🚗",
-        "parliament": "🏛️", "other": "📁"
-    }
-    emoji = emoji_map.get(story.get("topic", "").lower(), "📌")
-    
-    st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        border-radius: 12px;
-        padding: 20px;
-        margin: 12px 0;
-        color: white;
-    ">
-        <h3 style="margin: 0 0 8px 0;">{emoji} {story.get('headline', '')}</h3>
-        <p style="margin: 8px 0; opacity: 0.95;"><strong>📈 Finding:</strong> {story.get('key_finding', '')[:200]}</p>
-        <p style="margin: 6px 0; opacity: 0.85;"><strong>📅 Context:</strong> {story.get('context', '')}</p>
-        <p style="margin: 6px 0; opacity: 0.85;"><strong>🎯 Outlook:</strong> {story.get('outlook', '')}</p>
-    </div>
-    """, unsafe_allow_html=True)
+# Metrics
+cols = st.columns(4)
+with cols[0]:
+    st.metric("Total Records", f"{sum(sources.values()):,}")
+with cols[1]:
+    st.metric("Sources", len(sources))
+with cols[2]:
+    st.metric("Topics", len(topics))
+with cols[3]:
+    st.metric("Stories", len(stories))
 
+st.markdown("---")
 
-def render_story_inline(story):
-    """Render compact story for insights section."""
-    if not story:
-        return
-    emoji_map = {"economy": "📊", "health": "🏥", "crime": "🔍", "education": "🎓",
-                 "environment": "🌍", "population": "👥", "housing": "🏠", "transport": "🚗",
-                 "parliament": "🏛️", "other": "📁"}
-    emoji = emoji_map.get(story.get("topic", "").lower(), "📌")
-    st.markdown(f"**{emoji} {story.get('headline', '')}**")
-    st.caption(f"{story.get('key_finding', '')[:120]}...")
+# Featured Stories
+st.subheader("📰 Featured Data Stories")
 
-
-def build_trend_chart(data, months, title):
-    """Build trend line chart."""
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=months, y=data, mode='lines+markers',
-        name='Datasets', line=dict(color='#667eea', width=2)
-    ))
-    fig.update_layout(title=title, xaxis_title="Month", yaxis_title="Dataset Count",
-                     template="plotly_white", height=350)
-    return fig
-
-
-# ============== MAIN APP ==============
-def main():
-    sources, topics = get_record_counts()
-    stories = get_all_stories(limit=10)
-    
-    # Sidebar
-    st.sidebar.title("🇬🇧 UK Data Stories")
-    st.sidebar.markdown("### 📊 Quick Stats")
-    st.sidebar.metric("Total Records", f"{sum(sources.values()):,}")
-    st.sidebar.metric("Sources", len(sources))
-    st.sidebar.metric("Topics", len(topics))
-    
-    st.sidebar.markdown("### 📚 Topics")
-    for topic, count in topics.items():
-        st.sidebar.markdown(f"- **{topic.title()}**: {count:,}")
-    
-    st.sidebar.markdown("---")
-    st.sidebar.info("💡 Stories powered by AI analysis")
-    
-    # Main header
-    st.title("🇬🇧 UK Data Stories")
-    st.markdown("### Interactive UK Government Data Intelligence")
-    
-    # Metrics row
-    cols = st.columns(4)
-    with cols[0]:
-        st.metric("Records", f"{sum(sources.values()):,}")
-    with cols[1]:
-        st.metric("Sources", len(sources))
-    with cols[2]:
-        st.metric("Topics", len(topics))
-    with cols[3]:
-        st.metric("Stories", len(stories))
-    
-    st.markdown("---")
-    
-    # Featured Stories
-    st.subheader("📰 Featured Data Stories")
-    if stories:
-        # Top 3 featured
-        c1, c2, c3 = st.columns(3)
-        for i, story in enumerate(stories[:3]):
-            with [c1, c2, c3][i]:
-                render_story_card(story)
+if stories:
+    # Show all stories
+    for story in stories:
+        emoji_map = {"economy": "📊", "health": "🏥", "crime": "🔍", "education": "🎓",
+                     "environment": "🌍", "population": "👥", "housing": "🏠", "transport": "🚗",
+                     "parliament": "🏛️", "other": "📁"}
+        emoji = emoji_map.get(story.get("topic", "").lower(), "📌")
         
-        # All stories expandable
-        with st.expander("📖 View All Stories"):
-            for story in stories:
-                render_story_card(story)
-    else:
-        st.warning("No stories available. Run analysis pipeline.")
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 12px; padding: 20px; margin: 12px 0; color: white;">
+            <h3 style="margin: 0 0 8px 0;">{emoji} {story.get('headline', '')}</h3>
+            <p style="margin: 6px 0;"><strong>📈 Finding:</strong> {story.get('key_finding', '')}</p>
+            <p style="margin: 6px 0;"><strong>📅 Context:</strong> {story.get('context', '')}</p>
+            <p style="margin: 6px 0;"><strong>🎯 Outlook:</strong> {story.get('outlook', '')}</p>
+        </div>
+        """, unsafe_allow_html=True)
+else:
+    st.warning("No stories available.")
+
+st.markdown("---")
+
+# Interactive Analysis
+st.subheader("📊 Interactive Analysis")
+
+tab1, tab2, tab3 = st.tabs(["📈 Topic Trends", "🥧 Distribution", "🔎 Explore Data"])
+
+with tab1:
+    selected = st.selectbox("Select Topic", list(topics.keys()), key="topic_select")
+    data = get_topic_data(selected)
     
-    # Interactive Analysis
-    st.markdown("---")
-    st.subheader("📊 Interactive Analysis")
-    
-    tab1, tab2, tab3 = st.tabs(["📈 Topic Trends", "🥧 Distribution", "🔎 Explore Data"])
-    
-    with tab1:
-        selected = st.selectbox("Select Topic", list(topics.keys()))
-        data = get_topic_data(selected)
-        
-        if data.get('months') and data.get('counts'):
-            fig = build_trend_chart(data['counts'], data['months'], f"{selected.title()} Dataset Publishing")
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Metrics
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("Total", data['summary'].get('total_datasets', 'N/A'))
-            with c2:
-                trend_dir = data.get('trend', {}).get('direction', 'N/A')
-                st.metric("Trend", trend_dir.title())
-            with c3:
-                orgs = data['summary'].get('num_organizations', 'N/A')
-                st.metric("Publishers", orgs)
-            
-            # Story for this topic
-            topic_story = get_topic_story(selected)
-            if topic_story:
-                st.markdown("#### 📖 Story")
-                render_story_card(topic_story)
-        else:
-            st.info("No data available.")
-    
-    with tab2:
-        fig = px.pie(values=list(topics.values()), names=list(topics.keys()), 
-                     title="Records by Topic", hole=0.4)
-        fig.update_layout(template="plotly_white")
+    if data.get('months') and data.get('counts'):
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=data['months'], y=data['counts'], mode='lines+markers',
+            name='Datasets', line=dict(color='#667eea', width=2)
+        ))
+        fig.update_layout(
+            title=f"{selected.title()} Dataset Publishing Over Time",
+            xaxis_title="Month", yaxis_title="Count",
+            template="plotly_white", height=350
+        )
         st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
-        topic_filter = st.selectbox("Filter by Topic", ["All"] + list(topics.keys()))
-        datasets = get_datasets(topic_filter if topic_filter != "All" else None)
-        if datasets:
-            import pandas as pd
-            df = pd.DataFrame(datasets, columns=["ID", "Title", "Topic", "Organization", "Source", "Quality"])
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No datasets found.")
-    
-    # Footer
-    st.markdown("---")
-    st.caption(f"🕐 Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | UK Data Stories")
+        
+        # Metrics
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Total", data.get('summary', {}).get('total_datasets', 'N/A'))
+        with c2:
+            trend_dir = data.get('trend', {}).get('direction', 'N/A')
+            st.metric("Trend", trend_dir.title() if trend_dir else 'N/A')
+        with c3:
+            orgs = data.get('summary', {}).get('num_organizations', 'N/A')
+            st.metric("Publishers", orgs)
+    else:
+        st.info("No data available for this topic.")
 
+with tab2:
+    fig = px.pie(
+        values=list(topics.values()), names=list(topics.keys()),
+        title="Records by Topic", hole=0.4
+    )
+    fig.update_layout(template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
 
-if __name__ == "__main__":
-    main()
+with tab3:
+    topic_filter = st.selectbox("Filter by Topic", ["All"] + list(topics.keys()), key="filter_select")
+    conn = duckdb.connect(DB_PATH, read_only=True)
+    if topic_filter == "All":
+        ds = conn.execute("SELECT title, topic, organization FROM records ORDER BY quality_score DESC LIMIT 50").fetchall()
+    else:
+        ds = conn.execute("SELECT title, topic, organization FROM records WHERE topic = ? ORDER BY quality_score DESC LIMIT 50", [topic_filter]).fetchall()
+    conn.close()
+    
+    for d in ds[:20]:
+        st.markdown(f"- **{d[0][:60]}...** ({d[1]}) - {d[2]}")
+
+# Footer
+st.markdown("---")
+st.caption(f"🕐 Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')} | UK Data Stories")
