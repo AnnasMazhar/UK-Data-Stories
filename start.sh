@@ -1,33 +1,40 @@
 #!/bin/bash
-# Start GovDataStory services
+# UK Data Stories - Deployment Script
 
-echo "Starting GovDataStory..."
+set -e
 
-# Kill existing processes on our ports
-pkill -f "uvicorn api.main" 2>/dev/null || true
-pkill -f "streamlit run" 2>/dev/null || true
+echo "🚀 Starting UK Data Stories..."
 
-sleep 1
-
-# Start FastAPI on port 8001
+# Navigate to project
 cd /home/openclaw/workspace/projects/govdatastory
+
+# Kill existing processes
+echo "Stopping existing services..."
+pkill -f "streamlit.*8501" 2>/dev/null || true
+pkill -f "uvicorn.*8001" 2>/dev/null || true
+
+sleep 2
+
+# Start FastAPI (optional - for API access)
+echo "Starting FastAPI on port 8001..."
 .venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8001 &
 API_PID=$!
 
-echo "FastAPI started on port 8001 (PID: $API_PID)"
-
-# Wait a moment
-sleep 2
-
-# Start Streamlit on port 8501
-.venv/bin/python -m streamlit run dashboard/app.py --server.port 8501 &
+# Start Streamlit
+echo "Starting Streamlit on port 8501..."
+.venv/bin/python -m streamlit run dashboard/app.py --server.port 8501 --server.headless true &
 STREAMLIT_PID=$!
 
-echo "Streamlit started on port 8501 (PID: $STREAMLIT_PID)"
 echo ""
-echo "GovDataStory is running!"
+echo "✅ Services started!"
 echo "  - API: http://localhost:8001"
 echo "  - Dashboard: http://localhost:8501"
 echo ""
-echo "To stop:"
-echo "  kill $API_PID $STREAMLIT_PID"
+echo "API PID: $API_PID"
+echo "Streamlit PID: $STREAMLIT_PID"
+echo ""
+echo "To stop: kill $API_PID $STREAMLIT_PID"
+
+# Save PIDs
+echo "$API_PID" > /tmp/uk-data-stories-api.pid
+echo "$STREAMLIT_PID" > /tmp/uk-data-stories-streamlit.pid
