@@ -141,24 +141,33 @@ def load_to_duckdb(jsonl_path: Path, db_path: str = "data/govdatastory.duckdb"):
         kw = "keywords" if "keywords" in cols else ("tags" if "tags" in cols else "NULL")
         lic = "license" if "license" in cols else "NULL"
 
+        # The column list is explicit because init_db adds fts_content and the FTS
+        # index on it, so `records` has 16 columns while this statement supplies 16
+        # values. An unqualified column list made DuckDB raise
+        #   Binder Error: table "excluded" has 15 columns available but 16 columns specified
+        # for every load, which left the table empty while the job still reported success.
         conn.execute(f"""
             INSERT OR REPLACE INTO records
+                (id, title, description, topic, keywords, organization, url, license,
+                 source, ingested_at, quality_score, metadata_created, metadata_modified,
+                 theme, num_resources, fts_content)
             SELECT
-                {id_expr} as id,
+                {id_expr},
                 title,
                 description,
                 topic,
-                {kw} as keywords,
-                {org} as organization,
+                {kw},
+                {org},
                 url,
-                {lic} as license,
+                {lic},
                 source,
                 ingested_at,
-                0.8 as quality_score,
-                CAST(TRY_CAST({meta_created} AS TIMESTAMP) AS TIMESTAMP) as metadata_created,
-                CAST(TRY_CAST({meta_modified} AS TIMESTAMP) AS TIMESTAMP) as metadata_modified,
-                {theme} as theme,
-                {num_res} as num_resources
+                0.8,
+                CAST(TRY_CAST({meta_created} AS TIMESTAMP) AS TIMESTAMP),
+                CAST(TRY_CAST({meta_modified} AS TIMESTAMP) AS TIMESTAMP),
+                {theme},
+                {num_res},
+                COALESCE(title, '') || ' ' || COALESCE(description, '') || ' ' || COALESCE(topic, '')
             FROM raw_import
             WHERE {id_expr} IS NOT NULL
         """)
