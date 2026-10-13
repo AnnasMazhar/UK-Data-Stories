@@ -54,10 +54,48 @@ jobs:
           conn.close()
           "
 
-      - name: Commit updated DB
+      # The database passed GitHub's 100 MB file limit in July 2026, and every push
+      # since has been rejected by the pre-receive hook:
+      #   remote: error: File data/govdatastory.duckdb is 113.51 MB; this exceeds
+      #   GitHub's file size limit of 100.00 MB
+      # The database is derived data, so it is no longer committed. The small derived
+      # tables are published in data/derived/ and the database itself is kept as a
+      # build artifact.
+      - name: Publish derived outputs
+        run: |
+          python -c "
+          import duckdb, json, pathlib, datetime
+          out = pathlib.Path('data/derived'); out.mkdir(parents=True, exist_ok=True)
+          conn = duckdb.connect('data/govdatastory.duckdb', read_only=True)
+          counts = {}
+          for t in ['records','analysis_results','insights','data_stories']:
+              counts[t] = conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0]
+          for t in ['analysis_results','insights','data_stories']:
+              try:
+                  conn.execute(f\"COPY {t} TO '{out}/{t}.csv' (HEADER)\")
+              except Exception as e:
+                  print(f'could not export {t}: {e}')
+          (out / 'latest.json').write_text(json.dumps({
+              'generated_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),
+              'row_counts': counts,
+              'note': 'The DuckDB database itself exceeds the 100 MB repo file limit and is published as the workflow artifact govdatastory-duckdb instead.',
+          }, indent=2) + '\n')
+          print(counts)
+          conn.close()
+          "
+
+      - name: Upload database artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: govdatastory-duckdb
+          path: data/govdatastory.duckdb
+          retention-days: 30
+          compression-level: 0
+
+      - name: Commit updated derived data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/govdatastory.duckdb
-          git diff --cached --quiet && echo "No changes" || git commit -m "data: daily pipeline refresh $(date -u +%Y-%m-%d)"
+          git add -f data/derived
+          git diff --cached --quiet && echo "No changes" || git commit -m "data: daily derived refresh $(date -u +%Y-%m-%d)"
           git push
