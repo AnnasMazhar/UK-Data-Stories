@@ -1,0 +1,4 @@
+id,topic,metric,value,run_id,created_at
+cross_topic_correlations_13656943-15b1-411b-91ab-c7cca52872a1,cross_topic,correlations,"{""correlations"": []}",13656943-15b1-411b-91ab-c7cca52872a1,2026-10-13 15:44:30.501021
+cross_topic_org_clusters_13656943-15b1-411b-91ab-c7cca52872a1,cross_topic,org_clusters,"{""clusters"": {}, ""centroids"": []}",13656943-15b1-411b-91ab-c7cca52872a1,2026-10-13 15:44:30.504236
+ranked_feed_13656943-15b1-411b-91ab-c7cca52872a1,cross_topic,ranked_feed,[],13656943-15b1-411b-91ab-c7cca52872a1,2026-10-13 15:44:31.026226

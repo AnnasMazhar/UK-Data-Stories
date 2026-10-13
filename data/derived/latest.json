@@ -1,0 +1,10 @@
+{
+  "generated_utc": "2026-10-13T15:44:31+00:00",
+  "row_counts": {
+    "records": 0,
+    "analysis_results": 3,
+    "insights": 0,
+    "data_stories": 0
+  },
+  "note": "The DuckDB database itself exceeds the 100 MB repo file limit and is published as the workflow artifact govdatastory-duckdb instead."
+}
