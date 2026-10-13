@@ -27,15 +27,17 @@ jobs:
           import logging
           logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
 
+          # data/ must exist before init_db opens the database: the file is no longer
+          # committed, so nothing recreates the directory for us.
+          from pathlib import Path
+          Path('raw').mkdir(exist_ok=True)
+          Path('data').mkdir(exist_ok=True)
+
           from db.schema import init_db
           init_db('data/govdatastory.duckdb')
 
-          from pathlib import Path
           from scrapers.ckan_gov_uk import CkanGovUkScraper
           from scrapers.ons_api import ONSScraper
-
-          Path('raw').mkdir(exist_ok=True)
-          Path('data').mkdir(exist_ok=True)
 
           CkanGovUkScraper(output_dir=Path('raw')).run(max_per_theme=1000)
           ONSScraper(output_dir=Path('raw')).run(max_datasets=500)
