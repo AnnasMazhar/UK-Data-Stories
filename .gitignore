@@ -10,3 +10,6 @@ __pycache__/
 raw/
 htmlcov/
 .coverage
+
+# exceeds GitHub 100 MB limit; published as the workflow artifact instead
+data/govdatastory.duckdb
